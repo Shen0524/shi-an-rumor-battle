@@ -72,20 +72,35 @@ const questions = [
 ];
 
 const state = {
+  mode: "solo",
+  role: "solo",
   index: 0,
   playerHp: 100,
   enemyHp: 100,
   score: 0,
   streak: 0,
+  enemyStreak: 0,
   selectedSkill: "fact",
   locked: false,
+  answers: {},
+  peer: null,
+  conn: null,
   particles: []
 };
 
 const els = {
+  connectionPanel: document.querySelector("#connectionPanel"),
+  connectionStatus: document.querySelector("#connectionStatus"),
+  createRoomBtn: document.querySelector("#createRoomBtn"),
+  singleBtn: document.querySelector("#singleBtn"),
+  pairingBox: document.querySelector("#pairingBox"),
+  qrCode: document.querySelector("#qrCode"),
+  pairingLink: document.querySelector("#pairingLink"),
+  copyLinkBtn: document.querySelector("#copyLinkBtn"),
   roundLabel: document.querySelector("#roundLabel"),
   streakLabel: document.querySelector("#streakLabel"),
   scoreLabel: document.querySelector("#scoreLabel"),
+  playerName: document.querySelector("#playerName"),
   playerHpText: document.querySelector("#playerHpText"),
   enemyHpText: document.querySelector("#enemyHpText"),
   playerHpBar: document.querySelector("#playerHpBar"),
@@ -110,7 +125,18 @@ function currentQuestion() {
   return questions[state.index];
 }
 
-function renderQuestion() {
+function init() {
+  const joinId = new URLSearchParams(window.location.search).get("join");
+  if (joinId) {
+    joinRoom(joinId);
+  } else {
+    renderQuestion(false);
+    setAnswersEnabled(false);
+  }
+  drawArena();
+}
+
+function renderQuestion(enableAnswers = true) {
   const q = currentQuestion();
   els.roundLabel.textContent = `${state.index + 1} / ${questions.length}`;
   els.topicTag.textContent = q.topic;
@@ -118,7 +144,8 @@ function renderQuestion() {
   els.claimText.textContent = q.claim;
   els.nextBtn.hidden = true;
   state.locked = false;
-  setAnswersEnabled(true);
+  state.answers = {};
+  setAnswersEnabled(enableAnswers);
   updateStats();
 }
 
@@ -131,14 +158,126 @@ function updateStats() {
   els.enemyHpBar.style.width = `${Math.max(0, state.enemyHp)}%`;
 }
 
+function startSolo() {
+  resetGame();
+  state.mode = "solo";
+  state.role = "solo";
+  els.playerName.textContent = "闢謠守護者";
+  els.enemyName.textContent = "謠言魔王";
+  els.connectionStatus.textContent = "單人練習模式：答對就攻擊謠言魔王。";
+  els.pairingBox.hidden = true;
+  els.impactText.textContent = "READY";
+  renderQuestion(true);
+}
+
+function createRoom() {
+  if (!window.Peer || !window.QRCode) {
+    els.connectionStatus.textContent = "配對套件尚未載入，請確認網路後重新整理頁面。";
+    return;
+  }
+
+  resetGame();
+  state.mode = "multi";
+  state.role = "host";
+  els.playerName.textContent = "一號選手";
+  els.enemyName.textContent = "等待二號選手";
+  els.connectionStatus.textContent = "正在建立房間...";
+  setAnswersEnabled(false);
+
+  state.peer = new Peer();
+  state.peer.on("open", (id) => {
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.searchParams.set("join", id);
+    renderPairingUrl(url.toString());
+    els.connectionStatus.textContent = "房間已建立，請第二位選手掃描 QR code。";
+  });
+  state.peer.on("connection", (conn) => {
+    if (state.conn) {
+      conn.close();
+      return;
+    }
+    setupConnection(conn);
+  });
+  state.peer.on("error", () => {
+    els.connectionStatus.textContent = "房間建立失敗，請重新整理後再試一次。";
+  });
+}
+
+function joinRoom(hostId) {
+  if (!window.Peer) {
+    els.connectionStatus.textContent = "配對套件尚未載入，請確認網路後重新整理頁面。";
+    setAnswersEnabled(false);
+    return;
+  }
+
+  resetGame();
+  state.mode = "multi";
+  state.role = "guest";
+  els.playerName.textContent = "二號選手";
+  els.enemyName.textContent = "一號選手";
+  els.connectionStatus.textContent = "正在加入房間...";
+  els.pairingBox.hidden = true;
+  setAnswersEnabled(false);
+
+  state.peer = new Peer();
+  state.peer.on("open", () => {
+    setupConnection(state.peer.connect(hostId, { reliable: true }));
+  });
+  state.peer.on("error", () => {
+    els.connectionStatus.textContent = "加入房間失敗，請確認 QR code 是否仍有效。";
+  });
+}
+
+function setupConnection(conn) {
+  state.conn = conn;
+  conn.on("open", () => {
+    els.connectionStatus.textContent = "配對成功！兩位選手請同時作答。";
+    els.enemyName.textContent = state.role === "host" ? "二號選手" : "一號選手";
+    els.impactText.textContent = "DUEL";
+    renderQuestion(true);
+    sendMessage("sync", publicState());
+  });
+  conn.on("data", handleMessage);
+  conn.on("close", () => {
+    els.connectionStatus.textContent = "對手已離線。可以重新建立房間或改玩單人練習。";
+    setAnswersEnabled(false);
+  });
+  conn.on("error", () => {
+    els.connectionStatus.textContent = "連線中斷，請重新配對。";
+    setAnswersEnabled(false);
+  });
+}
+
+function renderPairingUrl(url) {
+  els.pairingBox.hidden = false;
+  els.pairingLink.href = url;
+  els.pairingLink.textContent = url;
+  els.qrCode.replaceChildren();
+  new QRCode(els.qrCode, {
+    text: url,
+    width: 150,
+    height: 150,
+    correctLevel: QRCode.CorrectLevel.M
+  });
+}
+
 function chooseAnswer(answer) {
   if (state.locked) return;
+  if (state.mode === "multi") {
+    chooseMultiplayerAnswer(answer);
+    return;
+  }
+  chooseSoloAnswer(answer);
+}
+
+function chooseSoloAnswer(answer) {
   state.locked = true;
   setAnswersEnabled(false);
 
   const q = currentQuestion();
   const correct = answer === q.answer;
-  const damage = calculateDamage(correct);
+  const damage = calculateDamage(correct, state.selectedSkill, state.streak);
 
   if (correct) {
     state.enemyHp = Math.max(0, state.enemyHp - damage);
@@ -147,7 +286,7 @@ function chooseAnswer(answer) {
     els.feedbackTitle.textContent = `命中！造成 ${damage} 點闢謠傷害`;
     els.feedbackBody.textContent = q.fact;
     showImpact("TRUTH HIT", "#f2b84b", "enemy");
-    document.querySelector(".rumor-fighter").classList.add("shake");
+    shake(".rumor-fighter");
   } else {
     const hurt = state.selectedSkill === "shield" ? 8 : 16;
     state.playerHp = Math.max(0, state.playerHp - hurt);
@@ -155,39 +294,134 @@ function chooseAnswer(answer) {
     els.feedbackTitle.textContent = `被謠言反擊！損失 ${hurt} 點守護值`;
     els.feedbackBody.textContent = q.fact;
     showImpact("FACT CHECK", "#df5b54", "hero");
-    document.querySelector(".hero-fighter").classList.add("shake");
+    shake(".hero-fighter");
   }
 
   updateStats();
-  setTimeout(() => {
-    document.querySelector(".rumor-fighter").classList.remove("shake");
-    document.querySelector(".hero-fighter").classList.remove("shake");
-  }, 420);
-
   if (state.enemyHp === 0 || state.playerHp === 0 || state.index === questions.length - 1) {
-    endGame();
+    endSoloGame();
   } else {
     els.nextBtn.hidden = false;
   }
 }
 
-function calculateDamage(correct) {
-  if (!correct) return 0;
-  if (state.selectedSkill === "combo") {
-    return state.streak >= 2 ? 34 : 18;
+function chooseMultiplayerAnswer(answer) {
+  state.locked = true;
+  setAnswersEnabled(false);
+  state.answers.local = { answer, skill: state.selectedSkill, streak: state.streak };
+  els.feedbackTitle.textContent = "已送出判斷，等待對手作答。";
+  els.feedbackBody.textContent = "雙方都作答後會一起結算傷害。";
+  sendMessage("answer", state.answers.local);
+  resolveMultiplayerRound();
+}
+
+function handleMessage(message) {
+  if (!message || !message.type) return;
+  if (message.type === "sync") {
+    applyRemoteState(message.payload);
   }
-  if (state.selectedSkill === "shield") return 18;
+  if (message.type === "answer") {
+    state.answers.remote = message.payload;
+    resolveMultiplayerRound();
+  }
+  if (message.type === "next") {
+    applyRemoteState(message.payload);
+    renderQuestion(true);
+    els.feedbackTitle.textContent = "新回合開始。";
+    els.feedbackBody.textContent = "請判斷這句話是真相或謠言。";
+  }
+  if (message.type === "restart") {
+    resetGame();
+    renderQuestion(true);
+    els.restartBtn.hidden = true;
+    els.feedbackTitle.textContent = "對手重新開始了對戰。";
+    els.feedbackBody.textContent = "兩位選手請準備作答。";
+  }
+}
+
+function resolveMultiplayerRound() {
+  if (!state.answers.local || !state.answers.remote) return;
+
+  const q = currentQuestion();
+  const localCorrect = state.answers.local.answer === q.answer;
+  const remoteCorrect = state.answers.remote.answer === q.answer;
+  const localDamage = calculateDamage(localCorrect, state.answers.local.skill, state.streak);
+  const remoteDamage = calculateDamage(remoteCorrect, state.answers.remote.skill, state.enemyStreak);
+
+  if (localCorrect) {
+    state.enemyHp = Math.max(0, state.enemyHp - localDamage);
+    state.streak += 1;
+    state.score += 120 + localDamage + state.streak * 15;
+    showImpact("HIT", "#f2b84b", "enemy");
+    shake(".rumor-fighter");
+  } else {
+    const hurt = state.answers.local.skill === "shield" ? 8 : 14;
+    state.playerHp = Math.max(0, state.playerHp - hurt);
+    state.streak = 0;
+    showImpact("MISS", "#df5b54", "hero");
+    shake(".hero-fighter");
+  }
+
+  if (remoteCorrect) {
+    state.playerHp = Math.max(0, state.playerHp - remoteDamage);
+    state.enemyStreak += 1;
+    showImpact("COUNTER", "#df5b54", "hero");
+    shake(".hero-fighter");
+  } else {
+    state.enemyStreak = 0;
+  }
+
+  updateStats();
+  els.feedbackTitle.textContent = buildRoundTitle(localCorrect, remoteCorrect, localDamage, remoteDamage);
+  els.feedbackBody.textContent = q.fact;
+
+  if (state.playerHp === 0 || state.enemyHp === 0 || state.index === questions.length - 1) {
+    endMultiplayerGame();
+  } else if (state.role === "host") {
+    els.nextBtn.hidden = false;
+  } else {
+    els.feedbackBody.textContent = `${q.fact} 等待房主開始下一題。`;
+  }
+}
+
+function buildRoundTitle(localCorrect, remoteCorrect, localDamage, remoteDamage) {
+  if (localCorrect && remoteCorrect) return `雙方命中！你造成 ${localDamage} 點，也受到 ${remoteDamage} 點。`;
+  if (localCorrect) return `你答對了！造成 ${localDamage} 點傷害。`;
+  if (remoteCorrect) return `對手答對，你受到 ${remoteDamage} 點傷害。`;
+  return "雙方都被謠言迷惑，這回合沒有命中。";
+}
+
+function calculateDamage(correct, skill, streak) {
+  if (!correct) return 0;
+  if (skill === "combo") return streak >= 2 ? 34 : 18;
+  if (skill === "shield") return 18;
   return 24;
 }
 
-function endGame() {
+function nextRound() {
+  state.index += 1;
+  if (state.mode === "multi") {
+    renderQuestion(true);
+    els.feedbackTitle.textContent = "下一題開始。";
+    els.feedbackBody.textContent = "兩位選手請同時作答。";
+    sendMessage("next", publicState());
+    return;
+  }
+
+  renderQuestion(true);
+  els.feedbackTitle.textContent = "下一則傳聞來了。";
+  els.feedbackBody.textContent = "選一個技能，再判斷這句話是真相或謠言。";
+  els.impactText.textContent = "ROUND";
+}
+
+function endSoloGame() {
   setAnswersEnabled(false);
   els.nextBtn.hidden = true;
   els.restartBtn.hidden = false;
 
   const won = state.enemyHp === 0 || state.playerHp > 0;
   if (won) {
-    els.feedbackTitle.textContent = "闢謠成功，實安戰隊勝利！";
+    els.feedbackTitle.textContent = "闢謠成功，資安戰隊勝利！";
     els.feedbackBody.textContent = `你拿下 ${state.score} 分。最強防線不是猜答案，而是願意停一下、查證一下。`;
     els.impactText.textContent = "VICTORY";
   } else {
@@ -197,26 +431,74 @@ function endGame() {
   }
 }
 
-function nextRound() {
-  state.index += 1;
-  renderQuestion();
-  els.feedbackTitle.textContent = "下一則傳聞來了。";
-  els.feedbackBody.textContent = "選一個技能，再判斷這句話是真相或謠言。";
-  els.impactText.textContent = "ROUND";
+function endMultiplayerGame() {
+  setAnswersEnabled(false);
+  els.nextBtn.hidden = true;
+  els.restartBtn.hidden = false;
+
+  if (state.playerHp > state.enemyHp) {
+    els.feedbackTitle.textContent = "你贏得這場資安闢謠對戰！";
+    els.impactText.textContent = "WIN";
+  } else if (state.playerHp < state.enemyHp) {
+    els.feedbackTitle.textContent = "對手暫時領先，重新挑戰追回來。";
+    els.impactText.textContent = "RETRY";
+  } else {
+    els.feedbackTitle.textContent = "平手！兩位選手都守住了資安防線。";
+    els.impactText.textContent = "DRAW";
+  }
+  els.feedbackBody.textContent = `你的分數：${state.score}。重新開始會同步通知對手。`;
 }
 
 function restart() {
+  resetGame();
+  els.restartBtn.hidden = true;
+  if (state.mode === "multi") {
+    renderQuestion(true);
+    sendMessage("restart", publicState());
+    els.feedbackTitle.textContent = "雙人對戰重新開始。";
+    els.feedbackBody.textContent = "兩位選手請準備作答。";
+    return;
+  }
+  startSolo();
+}
+
+function resetGame() {
   state.index = 0;
   state.playerHp = 100;
   state.enemyHp = 100;
   state.score = 0;
   state.streak = 0;
+  state.enemyStreak = 0;
   state.locked = false;
-  els.restartBtn.hidden = true;
-  els.feedbackTitle.textContent = "選擇你的判斷，開始第一擊。";
-  els.feedbackBody.textContent = "每題都是常見安全迷思。判斷「真相」或「謠言」，答對就能削弱謠言魔王。";
+  state.answers = {};
   els.impactText.textContent = "READY";
-  renderQuestion();
+  updateStats();
+}
+
+function publicState() {
+  return {
+    index: state.index,
+    playerHp: state.enemyHp,
+    enemyHp: state.playerHp,
+    streak: state.enemyStreak,
+    enemyStreak: state.streak
+  };
+}
+
+function applyRemoteState(remote) {
+  if (!remote) return;
+  state.index = remote.index;
+  state.playerHp = remote.playerHp;
+  state.enemyHp = remote.enemyHp;
+  state.streak = remote.streak;
+  state.enemyStreak = remote.enemyStreak;
+  updateStats();
+}
+
+function sendMessage(type, payload) {
+  if (state.conn && state.conn.open) {
+    state.conn.send({ type, payload });
+  }
 }
 
 function setAnswersEnabled(enabled) {
@@ -229,6 +511,12 @@ function selectSkill(skill) {
   document.querySelectorAll(".skill-card").forEach((card) => {
     card.classList.toggle("active", card.dataset.skill === skill);
   });
+}
+
+function shake(selector) {
+  const node = document.querySelector(selector);
+  node.classList.add("shake");
+  setTimeout(() => node.classList.remove("shake"), 420);
 }
 
 function showImpact(text, color, side) {
@@ -277,6 +565,15 @@ function drawArena() {
   requestAnimationFrame(drawArena);
 }
 
+els.createRoomBtn.addEventListener("click", createRoom);
+els.singleBtn.addEventListener("click", startSolo);
+els.copyLinkBtn.addEventListener("click", async () => {
+  await navigator.clipboard.writeText(els.pairingLink.href);
+  els.copyLinkBtn.textContent = "已複製";
+  setTimeout(() => {
+    els.copyLinkBtn.textContent = "複製連結";
+  }, 1200);
+});
 els.truthBtn.addEventListener("click", () => chooseAnswer(true));
 els.mythBtn.addEventListener("click", () => chooseAnswer(false));
 els.nextBtn.addEventListener("click", nextRound);
@@ -285,5 +582,4 @@ document.querySelectorAll(".skill-card").forEach((card) => {
   card.addEventListener("click", () => selectSkill(card.dataset.skill));
 });
 
-renderQuestion();
-drawArena();
+init();

@@ -99,6 +99,80 @@ h1 {
   min-height: 330px;
 }
 
+.connection-panel {
+  display: grid;
+  grid-template-columns: 1.4fr auto;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow);
+}
+
+.connection-copy h2 {
+  margin: 0 0 8px;
+  font-size: clamp(1.45rem, 3vw, 2.3rem);
+}
+
+.connection-copy p:last-child {
+  margin: 0;
+  color: rgba(24, 32, 43, 0.72);
+  line-height: 1.55;
+}
+
+.connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pairing-box {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.qr-code {
+  display: grid;
+  place-items: center;
+  width: 176px;
+  min-height: 176px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.qr-code img,
+.qr-code canvas {
+  width: 150px;
+  height: 150px;
+}
+
+.small-label {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(24, 32, 43, 0.64);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+#pairingLink {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--plum);
+  font-weight: 800;
+}
+
 .fighter,
 .impact-zone,
 .question-panel,
@@ -472,6 +546,7 @@ h1 {
 
 @media (max-width: 820px) {
   .battle-header,
+  .connection-panel,
   .arena,
   .answer-grid,
   .skill-panel {
@@ -498,6 +573,18 @@ h1 {
   .impact-zone {
     min-height: 210px;
     order: -1;
+  }
+
+  .connection-actions {
+    justify-content: stretch;
+  }
+
+  .connection-actions .primary-btn {
+    flex: 1 1 180px;
+  }
+
+  .pairing-box {
+    grid-template-columns: 1fr;
   }
 }
 

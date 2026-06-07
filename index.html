@@ -29,10 +29,30 @@
         </div>
       </section>
 
+      <section id="connectionPanel" class="connection-panel" aria-label="雙人配對">
+        <div class="connection-copy">
+          <p class="eyebrow">Pair Battle</p>
+          <h2>雙人 QR 配對</h2>
+          <p id="connectionStatus">建立房間後，請第二位選手掃描 QR code 加入對戰。</p>
+        </div>
+        <div class="connection-actions">
+          <button id="createRoomBtn" class="primary-btn" type="button">建立雙人房間</button>
+          <button id="singleBtn" class="primary-btn secondary" type="button">單人練習</button>
+        </div>
+        <div id="pairingBox" class="pairing-box" hidden>
+          <div id="qrCode" class="qr-code" aria-label="配對 QR code"></div>
+          <div>
+            <span class="small-label">配對連結</span>
+            <a id="pairingLink" href="#" target="_blank" rel="noreferrer"></a>
+            <button id="copyLinkBtn" class="primary-btn secondary" type="button">複製連結</button>
+          </div>
+        </div>
+      </section>
+
       <section class="arena" aria-label="對戰區">
         <div class="fighter hero-fighter" aria-label="闢謠守護者">
           <div class="health-label">
-            <span>闢謠守護者</span>
+            <span id="playerName">闢謠守護者</span>
             <strong id="playerHpText">100</strong>
           </div>
           <div class="health-bar"><span id="playerHpBar"></span></div>
@@ -106,6 +126,8 @@
       </section>
     </main>
 
+    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
