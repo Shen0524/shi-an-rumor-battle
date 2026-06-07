@@ -124,6 +124,19 @@
         <button id="nextBtn" class="primary-btn" type="button" hidden>下一回合</button>
         <button id="restartBtn" class="primary-btn secondary" type="button" hidden>重新挑戰</button>
       </section>
+
+      <section class="analysis-panel" aria-label="賽後紀錄">
+        <div>
+          <p class="eyebrow">Battle Log</p>
+          <h2>賽後紀錄</h2>
+          <p id="logStatus">尚未開始紀錄。遊戲結束後可下載 JSON 或 CSV 做分析。</p>
+        </div>
+        <div class="analysis-actions">
+          <button id="downloadJsonBtn" class="primary-btn" type="button" disabled>下載 JSON</button>
+          <button id="downloadCsvBtn" class="primary-btn secondary" type="button" disabled>下載 CSV</button>
+          <button id="clearLogsBtn" class="primary-btn secondary" type="button">清除本機紀錄</button>
+        </div>
+      </section>
     </main>
 
     <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>

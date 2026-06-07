@@ -72,6 +72,8 @@ const questions = [
 ];
 
 const state = {
+  sessionId: makeSessionId(),
+  startedAt: new Date().toISOString(),
   mode: "solo",
   role: "solo",
   index: 0,
@@ -83,6 +85,7 @@ const state = {
   selectedSkill: "fact",
   locked: false,
   answers: {},
+  logs: [],
   peer: null,
   conn: null,
   particles: []
@@ -116,16 +119,27 @@ const els = {
   mythBtn: document.querySelector("#mythBtn"),
   nextBtn: document.querySelector("#nextBtn"),
   restartBtn: document.querySelector("#restartBtn"),
+  logStatus: document.querySelector("#logStatus"),
+  downloadJsonBtn: document.querySelector("#downloadJsonBtn"),
+  downloadCsvBtn: document.querySelector("#downloadCsvBtn"),
+  clearLogsBtn: document.querySelector("#clearLogsBtn"),
   canvas: document.querySelector("#arenaCanvas")
 };
 
 const ctx = els.canvas.getContext("2d");
+
+function makeSessionId() {
+  const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+  const random = Math.random().toString(36).slice(2, 8);
+  return `cyber-battle-${stamp}-${random}`;
+}
 
 function currentQuestion() {
   return questions[state.index];
 }
 
 function init() {
+  updateLogStatus();
   const joinId = new URLSearchParams(window.location.search).get("join");
   if (joinId) {
     joinRoom(joinId);
@@ -156,6 +170,168 @@ function updateStats() {
   els.enemyHpText.textContent = Math.max(0, state.enemyHp);
   els.playerHpBar.style.width = `${Math.max(0, state.playerHp)}%`;
   els.enemyHpBar.style.width = `${Math.max(0, state.enemyHp)}%`;
+}
+
+function snapshotHealth() {
+  return {
+    playerHp: state.playerHp,
+    enemyHp: state.enemyHp,
+    score: state.score,
+    streak: state.streak,
+    enemyStreak: state.enemyStreak
+  };
+}
+
+function recordRound(detail) {
+  const after = snapshotHealth();
+  const entry = {
+    sessionId: state.sessionId,
+    timestamp: new Date().toISOString(),
+    mode: state.mode,
+    role: state.role,
+    round: state.index + 1,
+    topic: detail.question.topic,
+    level: detail.question.level,
+    claim: detail.question.claim,
+    correctAnswer: detail.question.answer ? "真相" : "謠言",
+    localAnswer: formatAnswer(detail.localAnswer),
+    localCorrect: detail.localCorrect,
+    localSkill: detail.localSkill,
+    localDamage: detail.localDamage,
+    localPenalty: detail.localPenalty,
+    remoteAnswer: detail.remoteAnswer === "" ? "" : formatAnswer(detail.remoteAnswer),
+    remoteCorrect: detail.remoteCorrect,
+    remoteSkill: detail.remoteSkill,
+    remoteDamage: detail.remoteDamage,
+    remotePenalty: detail.remotePenalty,
+    playerHpBefore: detail.before.playerHp,
+    playerHpAfter: after.playerHp,
+    enemyHpBefore: detail.before.enemyHp,
+    enemyHpAfter: after.enemyHp,
+    scoreAfter: after.score,
+    streakAfter: after.streak
+  };
+  state.logs.push(entry);
+  persistSession(false);
+  updateLogStatus();
+}
+
+function formatAnswer(answer) {
+  return answer ? "真相" : "謠言";
+}
+
+function persistSession(completed) {
+  const sessions = readStoredSessions().filter((session) => session.sessionId !== state.sessionId);
+  sessions.push({
+    sessionId: state.sessionId,
+    startedAt: state.startedAt,
+    updatedAt: new Date().toISOString(),
+    completed,
+    mode: state.mode,
+    role: state.role,
+    finalScore: state.score,
+    finalPlayerHp: state.playerHp,
+    finalEnemyHp: state.enemyHp,
+    rounds: state.logs
+  });
+  localStorage.setItem("cyberRumorBattleSessions", JSON.stringify(sessions.slice(-20)));
+}
+
+function readStoredSessions() {
+  try {
+    return JSON.parse(localStorage.getItem("cyberRumorBattleSessions") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function updateLogStatus() {
+  const storedCount = readStoredSessions().length;
+  const roundCount = state.logs.length;
+  els.logStatus.textContent = `本場已記錄 ${roundCount} 回合；本機保留 ${storedCount} 場紀錄。遊戲結束後可下載 JSON 或 CSV。`;
+  const hasLogs = roundCount > 0;
+  els.downloadJsonBtn.disabled = !hasLogs;
+  els.downloadCsvBtn.disabled = !hasLogs;
+}
+
+function buildExportPayload() {
+  return {
+    sessionId: state.sessionId,
+    exportedAt: new Date().toISOString(),
+    startedAt: state.startedAt,
+    mode: state.mode,
+    role: state.role,
+    finalScore: state.score,
+    finalPlayerHp: state.playerHp,
+    finalEnemyHp: state.enemyHp,
+    rounds: state.logs
+  };
+}
+
+function downloadJson() {
+  downloadFile(
+    `${state.sessionId}.json`,
+    "application/json;charset=utf-8",
+    JSON.stringify(buildExportPayload(), null, 2)
+  );
+}
+
+function downloadCsv() {
+  const rows = state.logs;
+  const headers = [
+    "sessionId",
+    "timestamp",
+    "mode",
+    "role",
+    "round",
+    "topic",
+    "level",
+    "claim",
+    "correctAnswer",
+    "localAnswer",
+    "localCorrect",
+    "localSkill",
+    "localDamage",
+    "localPenalty",
+    "remoteAnswer",
+    "remoteCorrect",
+    "remoteSkill",
+    "remoteDamage",
+    "remotePenalty",
+    "playerHpBefore",
+    "playerHpAfter",
+    "enemyHpBefore",
+    "enemyHpAfter",
+    "scoreAfter",
+    "streakAfter"
+  ];
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => csvEscape(row[header])).join(","))
+  ].join("\n");
+  downloadFile(`${state.sessionId}.csv`, "text/csv;charset=utf-8", `\uFEFF${csv}`);
+}
+
+function csvEscape(value) {
+  const text = value === undefined || value === null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadFile(filename, type, content) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function clearStoredLogs() {
+  localStorage.removeItem("cyberRumorBattleSessions");
+  updateLogStatus();
 }
 
 function startSolo() {
@@ -278,6 +454,8 @@ function chooseSoloAnswer(answer) {
   const q = currentQuestion();
   const correct = answer === q.answer;
   const damage = calculateDamage(correct, state.selectedSkill, state.streak);
+  const before = snapshotHealth();
+  let selfPenalty = 0;
 
   if (correct) {
     state.enemyHp = Math.max(0, state.enemyHp - damage);
@@ -289,6 +467,7 @@ function chooseSoloAnswer(answer) {
     shake(".rumor-fighter");
   } else {
     const hurt = state.selectedSkill === "shield" ? 8 : 16;
+    selfPenalty = hurt;
     state.playerHp = Math.max(0, state.playerHp - hurt);
     state.streak = 0;
     els.feedbackTitle.textContent = `被謠言反擊！損失 ${hurt} 點守護值`;
@@ -298,6 +477,20 @@ function chooseSoloAnswer(answer) {
   }
 
   updateStats();
+  recordRound({
+    question: q,
+    before,
+    localAnswer: answer,
+    localCorrect: correct,
+    localSkill: state.selectedSkill,
+    localDamage: damage,
+    localPenalty: selfPenalty,
+    remoteAnswer: "",
+    remoteCorrect: "",
+    remoteSkill: "",
+    remoteDamage: "",
+    remotePenalty: ""
+  });
   if (state.enemyHp === 0 || state.playerHp === 0 || state.index === questions.length - 1) {
     endSoloGame();
   } else {
@@ -347,6 +540,8 @@ function resolveMultiplayerRound() {
   const remoteCorrect = state.answers.remote.answer === q.answer;
   const localDamage = calculateDamage(localCorrect, state.answers.local.skill, state.streak);
   const remoteDamage = calculateDamage(remoteCorrect, state.answers.remote.skill, state.enemyStreak);
+  const before = snapshotHealth();
+  let localPenalty = 0;
 
   if (localCorrect) {
     state.enemyHp = Math.max(0, state.enemyHp - localDamage);
@@ -356,6 +551,7 @@ function resolveMultiplayerRound() {
     shake(".rumor-fighter");
   } else {
     const hurt = state.answers.local.skill === "shield" ? 8 : 14;
+    localPenalty = hurt;
     state.playerHp = Math.max(0, state.playerHp - hurt);
     state.streak = 0;
     showImpact("MISS", "#df5b54", "hero");
@@ -372,6 +568,20 @@ function resolveMultiplayerRound() {
   }
 
   updateStats();
+  recordRound({
+    question: q,
+    before,
+    localAnswer: state.answers.local.answer,
+    localCorrect,
+    localSkill: state.answers.local.skill,
+    localDamage,
+    localPenalty,
+    remoteAnswer: state.answers.remote.answer,
+    remoteCorrect,
+    remoteSkill: state.answers.remote.skill,
+    remoteDamage,
+    remotePenalty: remoteCorrect ? 0 : ""
+  });
   els.feedbackTitle.textContent = buildRoundTitle(localCorrect, remoteCorrect, localDamage, remoteDamage);
   els.feedbackBody.textContent = q.fact;
 
@@ -418,6 +628,8 @@ function endSoloGame() {
   setAnswersEnabled(false);
   els.nextBtn.hidden = true;
   els.restartBtn.hidden = false;
+  persistSession(true);
+  updateLogStatus();
 
   const won = state.enemyHp === 0 || state.playerHp > 0;
   if (won) {
@@ -435,6 +647,8 @@ function endMultiplayerGame() {
   setAnswersEnabled(false);
   els.nextBtn.hidden = true;
   els.restartBtn.hidden = false;
+  persistSession(true);
+  updateLogStatus();
 
   if (state.playerHp > state.enemyHp) {
     els.feedbackTitle.textContent = "你贏得這場資安闢謠對戰！";
@@ -463,6 +677,8 @@ function restart() {
 }
 
 function resetGame() {
+  state.sessionId = makeSessionId();
+  state.startedAt = new Date().toISOString();
   state.index = 0;
   state.playerHp = 100;
   state.enemyHp = 100;
@@ -471,8 +687,10 @@ function resetGame() {
   state.enemyStreak = 0;
   state.locked = false;
   state.answers = {};
+  state.logs = [];
   els.impactText.textContent = "READY";
   updateStats();
+  updateLogStatus();
 }
 
 function publicState() {
@@ -578,6 +796,9 @@ els.truthBtn.addEventListener("click", () => chooseAnswer(true));
 els.mythBtn.addEventListener("click", () => chooseAnswer(false));
 els.nextBtn.addEventListener("click", nextRound);
 els.restartBtn.addEventListener("click", restart);
+els.downloadJsonBtn.addEventListener("click", downloadJson);
+els.downloadCsvBtn.addEventListener("click", downloadCsv);
+els.clearLogsBtn.addEventListener("click", clearStoredLogs);
 document.querySelectorAll(".skill-card").forEach((card) => {
   card.addEventListener("click", () => selectSkill(card.dataset.skill));
 });
