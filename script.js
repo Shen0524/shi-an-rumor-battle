@@ -335,6 +335,7 @@ function clearStoredLogs() {
 }
 
 function startSolo() {
+  closeNetwork();
   resetGame();
   state.mode = "solo";
   state.role = "solo";
@@ -352,6 +353,7 @@ function createRoom() {
     return;
   }
 
+  closeNetwork();
   resetGame();
   state.mode = "multi";
   state.role = "host";
@@ -361,6 +363,11 @@ function createRoom() {
   setAnswersEnabled(false);
 
   state.peer = new Peer();
+  const timeout = window.setTimeout(() => {
+    if (!state.conn || !state.conn.open) {
+      els.connectionStatus.textContent = "房間已建立但尚未配對。請確認第二位選手已掃描 QR code，兩台裝置都能連網。";
+    }
+  }, 15000);
   state.peer.on("open", (id) => {
     const url = new URL(window.location.href);
     url.search = "";
@@ -387,6 +394,7 @@ function joinRoom(hostId) {
     return;
   }
 
+  closeNetwork();
   resetGame();
   state.mode = "multi";
   state.role = "guest";
@@ -397,6 +405,11 @@ function joinRoom(hostId) {
   setAnswersEnabled(false);
 
   state.peer = new Peer();
+  const timeout = window.setTimeout(() => {
+    if (!state.conn || !state.conn.open) {
+      els.connectionStatus.textContent = "仍在等待配對。若太久沒有開始，請回到一號選手畫面重新產生 QR code。";
+    }
+  }, 15000);
   state.peer.on("open", () => {
     setupConnection(state.peer.connect(hostId, { reliable: true }));
   });
@@ -407,14 +420,8 @@ function joinRoom(hostId) {
 
 function setupConnection(conn) {
   state.conn = conn;
-  conn.on("open", () => {
-    els.connectionStatus.textContent = "配對成功！兩位選手請同時作答。";
-    els.enemyName.textContent = state.role === "host" ? "二號選手" : "一號選手";
-    els.impactText.textContent = "DUEL";
-    renderQuestion(true);
-    sendMessage("sync", publicState());
-  });
   conn.on("data", handleMessage);
+  conn.on("open", beginMultiplayerSession);
   conn.on("close", () => {
     els.connectionStatus.textContent = "對手已離線。可以重新建立房間或改玩單人練習。";
     setAnswersEnabled(false);
@@ -423,6 +430,32 @@ function setupConnection(conn) {
     els.connectionStatus.textContent = "連線中斷，請重新配對。";
     setAnswersEnabled(false);
   });
+  if (conn.open) {
+    beginMultiplayerSession();
+  }
+}
+
+function beginMultiplayerSession() {
+  if (!state.conn || state.conn.battleStarted) return;
+  state.conn.battleStarted = true;
+  els.connectionStatus.textContent = "配對成功！對戰已開始，兩位選手請同時作答。";
+  els.enemyName.textContent = state.role === "host" ? "二號選手" : "一號選手";
+  els.feedbackTitle.textContent = "雙人對戰開始。";
+  els.feedbackBody.textContent = "不用再按開始，請直接選擇技能並判斷這句話是真相或謠言。";
+  els.impactText.textContent = "DUEL";
+  renderQuestion(true);
+  sendMessage("sync", publicState());
+}
+
+function closeNetwork() {
+  if (state.conn) {
+    state.conn.close();
+    state.conn = null;
+  }
+  if (state.peer) {
+    state.peer.destroy();
+    state.peer = null;
+  }
 }
 
 function renderPairingUrl(url) {
