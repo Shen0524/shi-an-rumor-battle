@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>實安闢謠爭霸戰</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <section class="battle-header" aria-label="遊戲狀態">
+        <div>
+          <p class="eyebrow">Truth Arena</p>
+          <h1>實安闢謠爭霸戰</h1>
+        </div>
+        <div class="score-strip">
+          <div>
+            <span>回合</span>
+            <strong id="roundLabel">1 / 10</strong>
+          </div>
+          <div>
+            <span>連擊</span>
+            <strong id="streakLabel">0</strong>
+          </div>
+          <div>
+            <span>分數</span>
+            <strong id="scoreLabel">0</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="arena" aria-label="對戰區">
+        <div class="fighter hero-fighter" aria-label="闢謠守護者">
+          <div class="health-label">
+            <span>闢謠守護者</span>
+            <strong id="playerHpText">100</strong>
+          </div>
+          <div class="health-bar"><span id="playerHpBar"></span></div>
+          <div class="avatar hero-avatar" aria-hidden="true">
+            <span class="visor"></span>
+            <span class="shield"></span>
+          </div>
+        </div>
+
+        <div class="impact-zone" aria-hidden="true">
+          <canvas id="arenaCanvas" width="640" height="320"></canvas>
+          <div id="impactText" class="impact-text">READY</div>
+        </div>
+
+        <div class="fighter rumor-fighter" aria-label="謠言魔王">
+          <div class="health-label">
+            <span id="enemyName">謠言魔王</span>
+            <strong id="enemyHpText">100</strong>
+          </div>
+          <div class="health-bar enemy"><span id="enemyHpBar"></span></div>
+          <div class="avatar enemy-avatar" aria-hidden="true">
+            <span class="horn left"></span>
+            <span class="horn right"></span>
+            <span class="eye left"></span>
+            <span class="eye right"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="question-panel" aria-label="題目">
+        <div class="question-meta">
+          <span id="topicTag">釣魚訊息</span>
+          <span id="difficultyTag">初階</span>
+        </div>
+        <p id="claimText" class="claim"></p>
+        <div class="answer-grid">
+          <button id="truthBtn" class="answer-btn truth" type="button">
+            <span>真相</span>
+            <strong>這是真的</strong>
+          </button>
+          <button id="mythBtn" class="answer-btn myth" type="button">
+            <span>闢謠</span>
+            <strong>這是謠言</strong>
+          </button>
+        </div>
+      </section>
+
+      <section class="skill-panel" aria-label="技能">
+        <button class="skill-card active" type="button" data-skill="fact">
+          <span class="skill-icon">!</span>
+          <strong>事實光束</strong>
+          <small>答對造成穩定傷害</small>
+        </button>
+        <button class="skill-card" type="button" data-skill="shield">
+          <span class="skill-icon">+</span>
+          <strong>查證護盾</strong>
+          <small>答錯時減少受傷</small>
+        </button>
+        <button class="skill-card" type="button" data-skill="combo">
+          <span class="skill-icon">x2</span>
+          <strong>連擊破解</strong>
+          <small>連擊中爆發高傷害</small>
+        </button>
+      </section>
+
+      <section class="feedback-panel" aria-live="polite">
+        <p id="feedbackTitle">選擇你的判斷，開始第一擊。</p>
+        <p id="feedbackBody">每題都是常見安全迷思。判斷「真相」或「謠言」，答對就能削弱謠言魔王。</p>
+        <button id="nextBtn" class="primary-btn" type="button" hidden>下一回合</button>
+        <button id="restartBtn" class="primary-btn secondary" type="button" hidden>重新挑戰</button>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
